@@ -10,9 +10,10 @@ import random
 import warnings
 from datetime import datetime
 
+import pandas as pd
 import numpy as np
 from tqdm import tqdm
-
+from sklearn.externals import joblib
 from sklearn.model_selection import train_test_split
 from skimage.io import imread
 
@@ -65,11 +66,11 @@ def parse_args():
                         help='loss: ' +
                             ' | '.join(loss_names) +
                             ' (default: BCEDiceLoss)')
-    parser.add_argument('--epochs', default=10000, type=int, metavar='N',
+    parser.add_argument('--epochs', default=50, type=int, metavar='N', #default=10000
                         help='number of total epochs to run')
     parser.add_argument('--early-stop', default=20, type=int,
                         metavar='N', help='early stopping (default: 20)')
-    parser.add_argument('-b', '--batch-size', default=16, type=int,
+    parser.add_argument('-b', '--batch-size', default=1, type=int,    # default=16
                         metavar='N', help='mini-batch size (default: 16)')
     parser.add_argument('--optimizer', default='Adam',
                         choices=['Adam', 'SGD'],

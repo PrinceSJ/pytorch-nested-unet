@@ -1,0 +1,8 @@
+# dataset
+input/circuit
+
+# model 
+models/
+
+# cache
+*.pyc

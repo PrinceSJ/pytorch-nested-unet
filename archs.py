@@ -116,6 +116,7 @@ class NestedUNet(nn.Module):
         x0_1 = self.conv0_1(torch.cat([x0_0, self.up(x1_0)], 1))
 
         x2_0 = self.conv2_0(self.pool(x1_0))
+        # print(x1_0.size(),x2_0.size())    # 307,306
         x1_1 = self.conv1_1(torch.cat([x1_0, self.up(x2_0)], 1))
         x0_2 = self.conv0_2(torch.cat([x0_0, x0_1, self.up(x1_1)], 1))
 
@@ -135,7 +136,7 @@ class NestedUNet(nn.Module):
             output2 = self.final2(x0_2)
             output3 = self.final3(x0_3)
             output4 = self.final4(x0_4)
-            return [output1, output2, output3, output4]
+            return (output1, output2, output3, output4)
 
         else:
             output = self.final(x0_4)

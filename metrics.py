@@ -78,7 +78,7 @@ def batch_iou(output, target):
     return np.mean(ious)
 
 
-def mean_iou(output, target):
+def mean_iou1(output, target):
     smooth = 1e-5
 
     output = torch.sigmoid(output).data.cpu().numpy()
@@ -95,7 +95,7 @@ def mean_iou(output, target):
     return np.mean(ious)
 
 
-def iou_score(output, target):
+def iou_score(output, target):   
     smooth = 1e-5
 
     if torch.is_tensor(output):

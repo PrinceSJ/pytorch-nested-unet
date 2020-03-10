@@ -27,7 +27,7 @@ from torch.utils.data import DataLoader
 import torch.backends.cudnn as cudnn
 import torchvision
 from torchvision import datasets, models, transforms
-
+from torch.utils.tensorboard import SummaryWriter
 from dataset import Dataset
 
 import archs
@@ -66,18 +66,18 @@ def parse_args():
                         help='loss: ' +
                             ' | '.join(loss_names) +
                             ' (default: BCEDiceLoss)')
-    parser.add_argument('--epochs', default=50, type=int, metavar='N', #default=10000
+    parser.add_argument('--epochs', default=200, type=int, metavar='N', #default=10000
                         help='number of total epochs to run')
-    parser.add_argument('--early-stop', default=20, type=int,
+    parser.add_argument('--early-stop', default=200, type=int,    # default = 20
                         metavar='N', help='early stopping (default: 20)')
-    parser.add_argument('-b', '--batch-size', default=1, type=int,    # default=16
+    parser.add_argument('-b', '--batch-size', default=16, type=int,    
                         metavar='N', help='mini-batch size (default: 16)')
-    parser.add_argument('--optimizer', default='Adam',
+    parser.add_argument('--optimizer', default='SGD',
                         choices=['Adam', 'SGD'],
                         help='loss: ' +
                             ' | '.join(['Adam', 'SGD']) +
                             ' (default: Adam)')
-    parser.add_argument('--lr', '--learning-rate', default=3e-4, type=float,
+    parser.add_argument('--lr', '--learning-rate', default=0.1, type=float,     # default = 3e-4
                         metavar='LR', help='initial learning rate')
     parser.add_argument('--momentum', default=0.9, type=float,
                         help='momentum')
@@ -121,14 +121,14 @@ def train(args, train_loader, model, criterion, optimizer, epoch, scheduler=None
 
         # compute output
         if args.deepsupervision:
-            outputs = model(input)
+            outputs = model(input)  
             loss = 0
             for output in outputs:
                 loss += criterion(output, target)
             loss /= len(outputs)
             iou = iou_score(outputs[-1], target)
         else:
-            output = model(input)
+            output = model(input)           # wo sigmoid
             loss = criterion(output, target)
             iou = iou_score(output, target)
 
@@ -183,6 +183,31 @@ def validate(args, val_loader, model, criterion):
 
     return log
 
+# from Unet++ code
+def adjust_learning_rate(args, optimizer, epoch,writer):
+    """Sets the learning rate to the initial LR decayed by 10 after 150 and 225 epochs"""
+    # lr = args.lr * (0.1 ** (epoch // (20+epochs*0.1+0.12*epoch))*(4**((epoch // (20+epochs*0.1+0.12*epoch))//3)))
+    epochs = args.epochs
+    if epoch<=int(epochs*0.2):
+        lr = args.lr
+    elif epoch>int(epochs*0.2) and epoch<=int(epochs*0.35):
+        lr = args.lr*0.1*3
+    elif epoch>int(epochs*0.35) and epoch<=int(epochs*0.5):
+        lr = args.lr*0.1
+    elif epoch>int(epochs*0.5) and epoch<=int(epochs*0.65):
+        lr = args.lr*0.01*3
+    elif epoch>int(epochs*0.65) and epoch<=int(epochs*0.8):
+        lr = args.lr*0.01
+    elif epoch>int(epochs*0.8) and epoch<=int(epochs*0.95):
+        lr = args.lr*0.001*3
+    elif epoch>int(epochs*0.95):
+        lr = args.lr*0.001
+
+    writer.add_scalar('learning_rate', lr, epoch)
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = lr
+    # return lr
+
 
 def main():
     args = parse_args()
@@ -194,6 +219,8 @@ def main():
             args.name = '%s_%s_woDS' %(args.dataset, args.arch)
     if not os.path.exists('models/%s' %args.name):
         os.makedirs('models/%s' %args.name)
+
+    writer = SummaryWriter('models/%s/test' %args.name)
 
     print('Config -----')
     for arg in vars(args):
@@ -226,6 +253,10 @@ def main():
     model = archs.__dict__[args.arch](args)
 
     model = model.cuda()
+    # print(type(model))
+    ######## model visualization in tensorboard ##############
+    dummy_input = torch.rand(1,3,256,256).cuda()
+    writer.add_graph(model,(dummy_input,))
 
     print(count_params(model))
 
@@ -260,6 +291,10 @@ def main():
     for epoch in range(args.epochs):
         print('Epoch [%d/%d]' %(epoch, args.epochs))
 
+        # changing lr
+        adjust_learning_rate(args,optimizer,epoch,writer)
+        # optimizer
+
         # train for one epoch
         train_log = train(args, train_loader, model, criterion, optimizer, epoch)
         # evaluate on validation set
@@ -267,6 +302,12 @@ def main():
 
         print('loss %.4f - iou %.4f - val_loss %.4f - val_iou %.4f'
             %(train_log['loss'], train_log['iou'], val_log['loss'], val_log['iou']))
+
+        # vis in tensorboard 
+        writer.add_scalar('train_loss',train_log['loss'],epoch)
+        writer.add_scalar('train_iou',train_log['iou'],epoch)
+        writer.add_scalar('val_loss',val_log['loss'],epoch)
+        writer.add_scalar('val_iou',val_log['iou'],epoch)
 
         tmp = pd.Series([
             epoch,
@@ -282,11 +323,15 @@ def main():
 
         trigger += 1
 
-        if val_log['iou'] > best_iou:
+        if val_log['iou'] > best_iou:                  
             torch.save(model.state_dict(), 'models/%s/model.pth' %args.name)
             best_iou = val_log['iou']
             print("=> saved best model")
             trigger = 0
+
+        #todo: save model with best dice
+        
+
 
         # early stopping
         if not args.early_stop is None:
